@@ -1,0 +1,53 @@
+# vim:ts=2:sts:et
+
+version: "3.4"
+
+
+services:
+  api:
+    environment:
+      DEBUG: ${DEBUG}
+      API_KEY: ${API_KEY}
+      #POSTGRES
+      DB_URI: mongodb://api_db:27017/nba
+    volumes:
+      - ./backend/:/app/
+    ports:
+      - 8000:80
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - api_db
+
+  api_db:
+    image: mongo
+    environment:
+      MONGO_INITDB_DATABASE: nba
+    ports:
+      - 27017:27017
+
+  worker: &worker_config
+    environment:
+      DEBUG: ${DEBUG}
+      API_KEY: ${API_KEY}
+      API_URL: http://api
+      BROCKER_URI: amqp://worker-queue
+    volumes:
+      - ./scrapper/:/app/
+    build:
+      context: ./scrapper
+      dockerfile: Dockerfile
+    depends_on:
+      - worker-queue
+      - api
+    command: supervisord -c /app/supervisor/worker_local.conf
+
+  beat:
+    <<: *worker_config
+    command: supervisord -c /app/supervisor/beat.conf
+
+  worker-queue:
+    image: rabbitmq:3.8.2-alpine
+    environment:
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit log_levels [{default,error}]"
